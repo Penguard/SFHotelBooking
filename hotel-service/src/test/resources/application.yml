@@ -1,0 +1,10 @@
+eureka:
+  client:
+    enabled: false
+app:
+  seed:
+    enabled: false
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: create-drop

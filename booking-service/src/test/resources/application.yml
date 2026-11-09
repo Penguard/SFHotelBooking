@@ -1,0 +1,12 @@
+eureka:
+  client:
+    enabled: false
+app:
+  seed:
+    enabled: false
+  compensation:
+    interval-ms: 3600000
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: create-drop

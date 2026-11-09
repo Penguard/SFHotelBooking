@@ -1,0 +1,32 @@
+server:
+  port: 8080
+spring:
+  application:
+    name: api-gateway
+  cloud:
+    gateway:
+      server:
+        webflux:
+          routes:
+            - id: booking
+              uri: lb://BOOKING-SERVICE
+              predicates:
+                - Path=/user,/user/**,/users,/booking,/booking/**,/bookings,/bookings/**
+            - id: hotels
+              uri: lb://HOTEL-SERVICE
+              predicates:
+                - Path=/api/hotels,/api/hotels/**,/api/rooms,/api/rooms/**
+app:
+  jwt:
+    secret: ${JWT_SECRET:dev-only-change-this-secret-32-chars-minimum}
+eureka:
+  instance:
+    prefer-ip-address: true
+  client:
+    service-url:
+      defaultZone: ${EUREKA_URI:http://localhost:8761/eureka/}
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,gateway
