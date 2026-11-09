@@ -87,6 +87,33 @@ class HotelServiceTest {
             assertEquals(409, e.status().value());
         } catch (InterruptedException e) { Thread.currentThread().interrupt(); throw new RuntimeException(e); }
     }
+    @Test void concurrentNonOverlappingBookingsMayBothSucceed() throws Exception {
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        CountDownLatch go = new CountDownLatch(1);
+        LocalDate firstStart = start().plusDays(10);
+        LocalDate secondStart = start().plusDays(13);
+        try {
+            Future<?> first = executor.submit(() -> {
+                try {
+                    go.await();
+                    assertEquals("CONFIRMED", slots.confirm(roomId,
+                        new ConfirmInput(811L, UUID.randomUUID(), firstStart, firstStart.plusDays(2))).status());
+                } catch (InterruptedException e) { Thread.currentThread().interrupt(); throw new RuntimeException(e); }
+            });
+            Future<?> second = executor.submit(() -> {
+                try {
+                    go.await();
+                    assertEquals("CONFIRMED", slots.confirm(roomId,
+                        new ConfirmInput(812L, UUID.randomUUID(), secondStart, secondStart.plusDays(2))).status());
+                } catch (InterruptedException e) { Thread.currentThread().interrupt(); throw new RuntimeException(e); }
+            });
+            go.countDown();
+            first.get(10, TimeUnit.SECONDS);
+            second.get(10, TimeUnit.SECONDS);
+        } finally { executor.shutdownNow(); }
+        assertEquals(2, reservations.count());
+        assertEquals(2, rooms.findById(roomId).orElseThrow().getTimesBooked());
+    }
     @Test void recommendationsAreOrderedByTimesBookedThenId() {
         var req = request(600); slots.confirm(roomId, req);
         var result = catalog.availableRooms(null, start().plusDays(3), start().plusDays(4), true, null);

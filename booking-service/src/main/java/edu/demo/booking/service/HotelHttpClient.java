@@ -8,6 +8,7 @@ import java.time.Duration;
 import java.time.LocalDate;
 import java.util.Arrays;
 import java.util.List;
+import org.slf4j.MDC;
 import org.springframework.cloud.client.loadbalancer.LoadBalanced;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -42,14 +43,23 @@ public class HotelHttpClient implements HotelClient {
                 var b = uri.path("/api/rooms/recommend").queryParam("startDate", start).queryParam("endDate", end);
                 if (hotelId != null) b.queryParam("hotelId", hotelId);
                 return b.build();
-            }).header(HttpHeaders.AUTHORIZATION, authorization).retrieve().body(RoomView[].class);
+            }).headers(h -> {
+                h.set(HttpHeaders.AUTHORIZATION, authorization);
+                String traceId = MDC.get("traceId");
+                if (traceId != null && !traceId.isBlank()) h.set("X-Trace-Id", traceId);
+            }).retrieve().body(RoomView[].class);
             return result == null ? List.of() : Arrays.asList(result);
         });
+    }
+    private static String traceIdFor(BookingView booking) {
+        String current = MDC.get("traceId");
+        // Background compensation has no incoming request: retain a stable fallback identifier.
+        return current == null || current.isBlank() ? booking.id().toString() : current;
     }
     @Override public void confirm(BookingView b) {
         circuitBreaker.executeSupplier(() -> retry.execute(ctx -> {
             rest.post().uri("/api/rooms/{id}/confirm-availability", b.roomId())
-                .headers(h -> { h.setBearerAuth(issuer.serviceToken()); h.set("X-Trace-Id", b.id().toString()); })
+                .headers(h -> { h.setBearerAuth(issuer.serviceToken()); h.set("X-Trace-Id", traceIdFor(b)); })
                 .body(new SlotRequest(b.id(), b.requestId(), b.startDate(), b.endDate()))
                 .retrieve().toBodilessEntity();
             return true;
@@ -59,7 +69,7 @@ public class HotelHttpClient implements HotelClient {
         // Compensation deliberately bypasses the circuit breaker, so a previous failure cannot suppress cleanup.
         retry.execute(ctx -> {
             rest.post().uri("/api/rooms/{id}/release", b.roomId())
-                .headers(h -> { h.setBearerAuth(issuer.serviceToken()); h.set("X-Trace-Id", b.id().toString()); })
+                .headers(h -> { h.setBearerAuth(issuer.serviceToken()); h.set("X-Trace-Id", traceIdFor(b)); })
                 .body(new ReleaseRequest(b.id(), b.requestId())).retrieve().toBodilessEntity();
             return null;
         });
